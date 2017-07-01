@@ -111,14 +111,19 @@ public class MainActivity extends AppCompatActivity {
                     int iter = 0;
                     for(String s : multiword){
                         int i = Integer.parseInt(s);
-                        if(i > minWordLength) {
+                        /*if(i > minWordLength) {  <--this was the bug!
                             minWordLength = i;
-                        }
+                        } # This would make it the largest value, we want the smallest*/
                         lengths[iter] = i;
                         iter++;
                     }
 
                     Arrays.sort(lengths);
+                    /* the following line is where we should define the smallest value
+                       This should fix the bug...
+                     */
+                    minWordLength = lengths[0];
+
 
                     Set<Set<String>> anagram;
 
