@@ -6,6 +6,7 @@ import android.support.design.widget.FloatingActionButton;
 import android.support.design.widget.Snackbar;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
+import android.util.Log;
 import android.view.View;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -14,6 +15,7 @@ import android.widget.EditText;
 import android.widget.TextView;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.ObjectInputStream;
 import java.nio.IntBuffer;
 import java.nio.charset.Charset;
 import java.util.Arrays;
@@ -28,71 +30,67 @@ public class MainActivity extends AppCompatActivity {
 
     Map<String, Integer> results;
     Handler handler;
+    TextView output;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         AssetManager assetManager = getAssets();
+        final HashMap<String, String> mainDictionary;
 
         try{
             final InputStream input = assetManager.open("enablenew.bin");
-
-            final AnagramSolver anagramSolver = new AnagramSolver(2, input, this);
-
             final Button buttonAll = (Button)findViewById(R.id.buttonAll);
             final Button buttonExact = (Button)findViewById(R.id.buttonExact);
             final Button buttonMultiword = (Button)findViewById(R.id.buttonMultiword);
             final EditText textQuery = (EditText)findViewById(R.id.textQuery);
             final EditText textMultiword = (EditText)findViewById(R.id.textMultiword);
             final TextView anagrams = (TextView)findViewById(R.id.textResults);
+            final MainActivity mainActivity = this;
+            this.output = anagrams;
+
+            Log.d("Anagrammer2:", "Trying to deserialize database...");
+            try
+            {
+                //FileInputStream fileIn = new FileInputStream(location);
+                ObjectInputStream in = new ObjectInputStream(input);
+                mainDictionary = (HashMap<String, String>) in.readObject();
+                in.close();
+            }catch(IOException i)
+            {
+                i.printStackTrace();
+                return;
+            }catch(ClassNotFoundException c)
+            {
+                System.out.println("Hashmap class not found");
+                c.printStackTrace();
+                return;
+            }
+            Log.d("Anagrammer2:", "Deserialization successful.");
+
 
             buttonAll.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View view) {
 
                     anagrams.setText("");
-
-                    HashMap<String, Integer> combos = anagramSolver.findExactSubsets(textQuery.getText().toString());
-                    results = AnagramSolverHelper.sortByComparator(combos, false);
-
-                    //HashMap<String, Integer> combos = p.ShowAll(search.getText().toString());
-                    //results = p.sortByComparator(combos, false);
-
-                    if(results != null) {
-                        Set<String> keys = results.keySet();
-                        for (String key : keys) {
-                            anagrams.append(key + " : " + results.get(key) + "\n");
-                        }
-                    } else {
-                        anagrams.append("No matches.");
-                    }
-
+                    SolverArgs solverArgs = new SolverArgs(mainDictionary, mainActivity, textQuery.getText().toString(), null);
+                    new AllWordSolverTask().execute(solverArgs);
                 }
             });
+
+
 
             buttonExact.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
                     anagrams.setText("");
-
-                        /*
-                        String results = p.Show(search.getText().toString());
-                        String[] r = results.split(",");
-                        */
-
-
-                    Set<String> r = anagramSolver.findExactAnagrams(textQuery.getText().toString());
-
-                    if(r != null) {
-                        for (String s : r) {
-                            anagrams.append(s + "\n");
-                        }
-                    } else {
-                        anagrams.append("No matches.");
-                    }
+                    SolverArgs solverArgs = new SolverArgs(mainDictionary, mainActivity, textQuery.getText().toString(), null);
+                    new ExactWordSolverTask().execute(solverArgs);
                 }
             });
+
 
             buttonMultiword.setOnClickListener(new View.OnClickListener() {
                 @Override
@@ -111,27 +109,51 @@ public class MainActivity extends AppCompatActivity {
                     int iter = 0;
                     for(String s : multiword){
                         int i = Integer.parseInt(s);
-                        /*if(i > minWordLength) {  <--this was the bug!
-                            minWordLength = i;
-                        } # This would make it the largest value, we want the smallest*/
                         lengths[iter] = i;
                         iter++;
                     }
 
                     Arrays.sort(lengths);
-                    /* the following line is where we should define the smallest value
-                       This should fix the bug...
-                     */
                     minWordLength = lengths[0];
+                    Set<Set<String>> anagram;
+                    SolverArgs solverArgs = new SolverArgs(mainDictionary, mainActivity, textQuery.getText().toString(), lengths);
+                    new MultiWordSolverTask().execute(solverArgs);
+
+                }
+            });
+
+            /*
+            buttonMultiword.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View view) {
+
+                    anagrams.setText("");
+                    int minWordLength = 0;
+                    if(textMultiword.getText().length() == 0) {
+                        anagrams.setText("Invalid input for Multiword.");
+                        return;
+                    }
+                    String[] multiword = textMultiword.getText().toString().split(",");
+                    int[] lengths = new int[multiword.length];
 
 
+                    int iter = 0;
+                    for(String s : multiword){
+                        int i = Integer.parseInt(s);
+                        lengths[iter] = i;
+                        iter++;
+                    }
+
+                    Arrays.sort(lengths);
+                    minWordLength = lengths[0];
                     Set<Set<String>> anagram;
 
                     if (minWordLength == 0) {
                         anagram = anagramSolver.findAllAnagrams(textQuery.getText().toString());
                     }
                     else {
-                        anagram = anagramSolver.findAllAnagrams(textQuery.getText().toString(), minWordLength);
+                        //anagram = anagramSolver.findAllAnagrams(textQuery.getText().toString(), minWordLength);
+                        anagram = anagramSolver.findSpecificAnagrams(textQuery.getText().toString(), lengths);
                     }
 
                     if(!anagram.isEmpty()) {
@@ -165,10 +187,7 @@ public class MainActivity extends AppCompatActivity {
 
                 }
             });
-
-
-
-
+            */
 
 
         } catch(IOException e){
@@ -181,6 +200,14 @@ public class MainActivity extends AppCompatActivity {
         // Inflate the menu; this adds items to the action bar if it is present.
         getMenuInflater().inflate(R.menu.menu_main, menu);
         return true;
+    }
+
+    public void PublishProgress(String s) {
+        output.setText(s);
+    }
+
+    public void PublishAppend(String s) {
+        output.append(s);
     }
 
     @Override

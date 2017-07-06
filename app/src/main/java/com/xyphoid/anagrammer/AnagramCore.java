@@ -4,6 +4,7 @@ package com.xyphoid.anagrammer;
  * Created by Chad on 12/10/2015.
  */
 
+import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Message;
 import android.test.suitebuilder.annotation.Suppress;
@@ -18,24 +19,15 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-public class AnagramSolver {
+public class AnagramCore {
 
-    private int minWordSize = 3;
     private SortedWordDictionary sortedDictionary;
-    private InputStream input;
     private String progresstext = "";
-    private MainActivity mainActivity;
+    public SolverArgs solverArgs;
 
-    public AnagramSolver(InputStream input, MainActivity mainActivity){
-        sortedDictionary = new SortedWordDictionary();
-        this.input = input;
-        this.mainActivity = mainActivity;
-        sortedDictionary.loadMainDictionary(input);
-    }
-
-    public AnagramSolver(int minWordSize, InputStream input, MainActivity mainActivity) {
-        this(input, mainActivity);
-        this.minWordSize = minWordSize;
+    public AnagramCore(SolverArgs solverArgs) {
+        this.solverArgs = solverArgs;
+        sortedDictionary = new SortedWordDictionary(solverArgs);
     }
 
     public void repairDictionary(){
@@ -74,7 +66,8 @@ public class AnagramSolver {
         }
     }
 
-    public HashMap<String, Integer> findExactSubsets(String query) {
+    public HashMap<String, Integer> findExactSubsets() {
+        String query = this.solverArgs.getLetters();
         String results = "";
         query = query.replace(" ", "");
         results = query;
@@ -118,7 +111,8 @@ public class AnagramSolver {
     }
 
 
-    public Set<String> findExactAnagrams(String wordString) {
+    public Set<String> findExactAnagrams() {
+        String wordString = this.solverArgs.getLetters();
         HashMap<String, String> dictionary = sortedDictionary.getMainDictionary();
 
         Set<String> anagrams = new HashSet<String>();
@@ -137,30 +131,46 @@ public class AnagramSolver {
         return anagrams.isEmpty() ? null : anagrams;
     }
 
-    public Set<Set<String>> findAllAnagrams(String wordString, int minWordSize) {
-        this.minWordSize = minWordSize;
-        return findAllAnagrams(wordString);
+    public Set<Set<String>> findSpecificAnagrams() {
+        String wordString = this.solverArgs.getLetters().replaceAll("\\s", "");
+        Set<Set<String>> anagramsSet = new HashSet<Set<String>>();
+        sortedDictionary.loadDictionaryWithSpecificSubsets(wordString, this.solverArgs.getLengths());
+        List<String> keyList = sortedDictionary.getDictionaryKeyList();
+
+        int count = 0;
+
+        for(int index = 0; index < keyList.size(); index++){
+            progresstext = "Processing " + Integer.toString(index+1) +
+                    " of " + Integer.toString(keyList.size());
+            //Log.d("anagrammer2:", progresstext);
+            this.solverArgs.getSolverTask().Publish(progresstext);
+            char[] charInventory = wordString.toCharArray();
+            Set<Set<String>> dictWordAnagramsSet = findAnagrams(index, charInventory, keyList);
+            Set<Set<String>> tempAnagramSet = new HashSet<Set<String>>();
+            if(dictWordAnagramsSet != null && !dictWordAnagramsSet.isEmpty()) {
+                Set<Set<String>> mergeResult = null;
+                for(Set<String> anagramSet : dictWordAnagramsSet) {
+                    mergeResult = mergeAnagramKeyWords(anagramSet);
+                    tempAnagramSet.addAll(mergeResult);
+                }
+                // print stuff to stdout if ya want;
+
+                anagramsSet.addAll(tempAnagramSet);
+            }
+        }
+
+        return anagramsSet;
     }
 
-    /*
-    private void SendMessage(String message) {
-        Message msg = mainActivity.handler.obtainMessage();
-        Bundle bundle = new Bundle();
-        bundle.putString("progress", message);
-        msg.setData(bundle);
-        mainActivity.handler.sendMessage(msg);
-    }
-    */
+    public Set<Set<String>> findAllAnagrams() {
 
-    public Set<Set<String>> findAllAnagrams(String wordString) {
-
-        wordString = wordString.replaceAll("\\s", "");
+        String wordString = this.solverArgs.getLetters().replaceAll("\\s", "");
         Set<Set<String>> anagramsSet = new HashSet<Set<String>>();
 
         progresstext = "Pruning dictionary entries...";
         Log.d("anagrammer2:", progresstext);
 
-        sortedDictionary.loadDictionaryWithSubsets(input, wordString, minWordSize);
+        sortedDictionary.loadDictionaryWithSubsets(wordString, this.solverArgs.getMinWordLength());
         List<String> keyList = sortedDictionary.getDictionaryKeyList();
 
         int count = 0;
@@ -192,7 +202,7 @@ public class AnagramSolver {
 
     private Set<Set<String>> findAnagrams(int dictionaryIndex, char[] charInventory, List<String> keyList){
 
-        if(dictionaryIndex >= keyList.size() || charInventory.length < minWordSize) {
+        if(dictionaryIndex >= keyList.size() || charInventory.length < this.solverArgs.getMinWordLength()) {
             return null;
         }
 
@@ -209,7 +219,7 @@ public class AnagramSolver {
 
         if(AnagramSolverHelper.isSubset(searchWordChars, charInventory)){
             char[] newCharInventory = AnagramSolverHelper.setDifference(charInventory, searchWordChars);
-            if(newCharInventory.length >= minWordSize) {
+            if(newCharInventory.length >= this.solverArgs.getMinWordLength()) {
                 Set<Set<String>> anagramsSet = new HashSet<Set<String>>();
                 for(int index = dictionaryIndex + 1; index < keyList.size(); index++) {
                     Set<Set<String>> searchWordAnagramsKeySet = findAnagrams(index, newCharInventory, keyList);
@@ -259,39 +269,5 @@ public class AnagramSolver {
 
         return mergedSets;
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 }
